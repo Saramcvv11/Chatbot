@@ -1,5 +1,5 @@
 {
-  "name": "telegram-stars-bot",
+  "name": "telegram-bot",
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
@@ -7,6 +7,9 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "telegraf": "^4.16.0"
+    "telegraf": "^4.16.3"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
