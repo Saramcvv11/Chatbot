@@ -1,149 +1,111 @@
-import { Telegraf, Markup, session } from "telegraf";
+import { Telegraf, Markup } from "telegraf";
 
-if (!process.env.BOT_TOKEN) {
-  throw new Error("BOT_TOKEN fehlt");
-}
+if (!process.env.BOT_TOKEN) throw new Error("BOT_TOKEN fehlt");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-bot.use(session());
 
-// ---------------- STÄDTE ----------------
-const CITIES = {
-  DE: ["Berlin","Hamburg","München","Köln"],
-  AT: ["Wien","Graz","Salzburg"],
-  CH: ["Zürich","Genf","Bern"]
-};
+/* =========================
+   DEMO PROFILE (nur Beispiel – später DB)
+========================= */
+const PROFILES = [
+  { name: "Anna", age: 23, city: "Berlin", country: "DE", origin: "Deutschland" },
+  { name: "Laura", age: 25, city: "Hamburg", country: "DE", origin: "Polen" },
+  { name: "Sophie", age: 22, city: "Wien", country: "AT", origin: "Österreich" },
+  { name: "Mia", age: 24, city: "Graz", country: "AT", origin: "Kroatien" },
+  { name: "Lena", age: 26, city: "Zürich", country: "CH", origin: "Schweiz" },
+  { name: "Nina", age: 21, city: "Genf", country: "CH", origin: "Frankreich" }
+];
 
-// ---------------- PROFIL STORAGE (Demo - später DB) ----------------
-const profiles = [];
-
-// ---------------- START ----------------
-bot.start(async (ctx) => {
-  ctx.session = {};
+/* =========================
+   MAIN MENU
+========================= */
+const showMainMenu = async (ctx, textPrefix = "👋 Willkommen") => {
+  const username = ctx.from.first_name || "User";
 
   await ctx.reply(
-    "👋 Willkommen beim Vermittlungs-Bot\n\nHier kannst du Profile aus deiner Region entdecken.",
+    `${textPrefix}, ${username}!\n\nWähle ein Land:`,
     Markup.inlineKeyboard([
-      [Markup.button.callback("🔎 Profile ansehen","VIEW_COUNTRY")],
-      [Markup.button.callback("➕ Profil erstellen","CREATE_PROFILE")]
+      [Markup.button.callback("🇩🇪 Deutschland", "LAND_DE")],
+      [Markup.button.callback("🇦🇹 Österreich", "LAND_AT")],
+      [Markup.button.callback("🇨🇭 Schweiz", "LAND_CH")]
     ])
   );
-});
+};
 
-// ---------------- LAND AUSWÄHLEN ----------------
-bot.action("VIEW_COUNTRY", async (ctx) => {
+bot.start((ctx) => showMainMenu(ctx));
+
+bot.action("MAIN_MENU", async (ctx) => {
   await ctx.answerCbQuery();
-
-  await ctx.editMessageText(
-    "🌍 Wähle ein Land:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback("🇩🇪 Deutschland","LAND_DE")],
-      [Markup.button.callback("🇦🇹 Österreich","LAND_AT")],
-      [Markup.button.callback("🇨🇭 Schweiz","LAND_CH")]
-    ])
-  );
+  await showMainMenu(ctx, "🏠 Hauptmenü");
 });
 
-// ---------------- PROFILE ZEIGEN ----------------
+/* =========================
+   STÄDTE
+========================= */
+const CITIES = {
+  DE: ["Berlin", "Hamburg"],
+  AT: ["Wien", "Graz"],
+  CH: ["Zürich", "Genf"]
+};
+
 bot.action(/LAND_(DE|AT|CH)/, async (ctx) => {
   await ctx.answerCbQuery();
   const land = ctx.match[1];
 
-  const results = profiles.filter(p => p.land === land);
+  const buttons = CITIES[land].map(city =>
+    [Markup.button.callback(city, `CITY_${land}_${city}`)]
+  );
 
-  if (results.length === 0) {
-    return ctx.reply("Noch keine Profile in diesem Land.");
+  buttons.push([Markup.button.callback("🏠 Hauptmenü", "MAIN_MENU")]);
+
+  await ctx.reply(
+    "🏙 Wähle eine Stadt:",
+    Markup.inlineKeyboard(buttons)
+  );
+});
+
+/* =========================
+   PROFILE ANZEIGEN
+========================= */
+bot.action(/CITY_(DE|AT|CH)_(.+)/, async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const land = ctx.match[1];
+  const city = ctx.match[2];
+
+  const cityProfiles = PROFILES.filter(
+    p => p.country === land && p.city === city
+  );
+
+  if (cityProfiles.length === 0) {
+    return ctx.reply(
+      "Keine Profile in dieser Stadt.",
+      Markup.inlineKeyboard([[Markup.button.callback("🏠 Hauptmenü", "MAIN_MENU")]])
+    );
   }
 
-  const randomProfile = results[Math.floor(Math.random() * results.length)];
+  const randomProfile =
+    cityProfiles[Math.floor(Math.random() * cityProfiles.length)];
 
   await ctx.reply(
     `👩 Name: ${randomProfile.name}\n` +
     `🎂 Alter: ${randomProfile.age}\n` +
     `🏙 Stadt: ${randomProfile.city}\n` +
-    `🌍 Herkunft: ${randomProfile.origin}`
+    `🌍 Herkunft: ${randomProfile.origin}`,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("🔎 Anderes Profil", `CITY_${land}_${city}`)],
+      [Markup.button.callback("🏠 Hauptmenü", "MAIN_MENU")]
+    ])
   );
 });
 
-// ---------------- PROFIL ERSTELLEN ----------------
-bot.action("CREATE_PROFILE", async (ctx) => {
-  await ctx.answerCbQuery();
-  ctx.session.step = "name";
-  await ctx.reply("Wie heißt du?");
-});
+/* =========================
+   ERROR HANDLING
+========================= */
+bot.catch((err) => console.error("Bot Fehler:", err));
 
-bot.on("text", async (ctx) => {
-  const step = ctx.session.step;
-
-  if (!step) return;
-
-  if (step === "name") {
-    ctx.session.name = ctx.message.text;
-    ctx.session.step = "age";
-    return ctx.reply("Wie alt bist du?");
-  }
-
-  if (step === "age") {
-    ctx.session.age = ctx.message.text;
-    ctx.session.step = "origin";
-    return ctx.reply("Was ist deine Herkunft?");
-  }
-
-  if (step === "origin") {
-    ctx.session.origin = ctx.message.text;
-    ctx.session.step = "country";
-
-    return ctx.reply(
-      "Wähle dein Land:",
-      Markup.inlineKeyboard([
-        [Markup.button.callback("🇩🇪 Deutschland","REG_DE")],
-        [Markup.button.callback("🇦🇹 Österreich","REG_AT")],
-        [Markup.button.callback("🇨🇭 Schweiz","REG_CH")]
-      ])
-    );
-  }
-});
-
-// ---------------- LAND BEI REG ----------------
-bot.action(/REG_(DE|AT|CH)/, async (ctx) => {
-  await ctx.answerCbQuery();
-
-  const land = ctx.match[1];
-  ctx.session.land = land;
-  ctx.session.step = "city";
-
-  const buttons = CITIES[land].map(city =>
-    [Markup.button.callback(city, `CITY_${city}`)]
-  );
-
-  await ctx.editMessageText(
-    "Wähle deine Stadt:",
-    Markup.inlineKeyboard(buttons)
-  );
-});
-
-// ---------------- STADT BEI REG ----------------
-bot.action(/CITY_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery();
-
-  ctx.session.city = ctx.match[1];
-
-  profiles.push({
-    name: ctx.session.name,
-    age: ctx.session.age,
-    origin: ctx.session.origin,
-    land: ctx.session.land,
-    city: ctx.session.city
-  });
-
-  ctx.session = {};
-
-  await ctx.reply("✅ Dein Profil wurde gespeichert!");
-});
-
-// ---------------- ERROR ----------------
-bot.catch(err => console.error("Bot Fehler:", err));
-
-// ---------------- LAUNCH ----------------
+/* =========================
+   LAUNCH
+========================= */
 bot.launch();
 console.log("🤖 Vermittlungs-Bot läuft");
